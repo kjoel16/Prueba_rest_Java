@@ -1,0 +1,40 @@
+1. Permitir tráfico HTTPS (443) hacia:
+
+https://repo.maven.apache.org
+
+---MOTIVO---
+*Descarga de dependencias Maven oficiales (Spring Boot, Tomcat embebido, Jackson, Validation, etc.).*
+-------------------------------------------------------------------------------------------------------
+2. Repositorios Spring:
+
+https://repo.spring.io
+---MOTIVO---
+Resolución de dependencias y plugins del ecosistema Spring.
+-------------------------------------------------------------------------------------------------------
+3. Repositorio JT400 (AS400):
+
+https://repo.maven.apache.org (net.sf.jt400)
+---MOTIVO---
+Descarga del driver JT400 (JTOpen) para comunicación con IBM i / AS400.
+-------------------------------------------------------------------------------------------------------
+4.Java Development Kit (JDK)
+
+JDK 17 o 21 
+
+Distribución recomendada:
+
+Oracle JDK
+---MOTIVO---
+Requisito para desarrollo y ejecución de Spring Boot.
+------------------------------------------------------------------------------------------------------
+5.IDE de Desarrollo
+
+Apache NetBeans 28
+
+---MOTIVO---
+
+Desarrollo y depuración de la API.
+
+
+
+
