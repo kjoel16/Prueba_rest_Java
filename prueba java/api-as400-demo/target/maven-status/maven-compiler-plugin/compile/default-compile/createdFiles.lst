@@ -1,0 +1,5 @@
+com\demo\apias400\ApiAs400DemoApplication.class
+com\demo\apias400\service\ConsultaService.class
+com\demo\apias400\controller\ConsultaController.class
+com\demo\apias400\dto\ConsultaRequest.class
+com\demo\apias400\dto\ConsultaResponse.class
