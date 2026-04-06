@@ -1,0 +1,311 @@
+package com.mycompany.logwriter;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
+/**
+ * Librería principal de logging.
+ * 
+ * Uso manual:
+ *   LogWriterLib.info("Descripción del log", miObjeto);
+ *   LogWriterLib.error("Algo falló", excepcion);
+ *   LogWriterLib.debug("Variable x", valorX);
+ *   LogWriterLib.warn("Advertencia", datos);
+ */
+public class LogWriterLib {
+
+    private static final Logger logger = LoggerFactory.getLogger(LogWriterLib.class);
+    private static final ObjectMapper objectMapper = createObjectMapper();
+
+    private static String basePath = "C:/logs";
+    private static String projectName = "MiProyecto";
+
+    // ThreadLocal para rastrear el endpoint actual por hilo
+    private static final ThreadLocal<String> currentEndpoint = new ThreadLocal<>();
+    private static final ThreadLocal<String> currentRequestId = new ThreadLocal<>();
+
+    private static ObjectMapper createObjectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        mapper.disable(SerializationFeature.FAIL_ON_EMPTY_BEANS);
+        mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        return mapper;
+    }
+
+    // =========================================================================
+    // CONFIGURACIÓN
+    // =========================================================================
+
+    public static void setBasePath(String path) {
+        basePath = path;
+    }
+
+    public static void setProjectName(String name) {
+        projectName = name;
+    }
+
+    public static void setCurrentEndpoint(String endpoint) {
+        currentEndpoint.set(endpoint);
+    }
+
+    public static void setCurrentRequestId(String requestId) {
+        currentRequestId.set(requestId);
+    }
+
+    public static String getCurrentEndpoint() {
+        return currentEndpoint.get();
+    }
+
+    public static String getCurrentRequestId() {
+        return currentRequestId.get();
+    }
+
+    public static void clear() {
+        currentEndpoint.remove();
+        currentRequestId.remove();
+    }
+
+    // =========================================================================
+    // MÉTODOS DE LOG MANUAL
+    // =========================================================================
+
+    /**
+     * Log de nivel INFO con descripción y objeto.
+     * Ejemplo: LogWriterLib.info("Usuario encontrado", usuarioDTO);
+     */
+    public static void info(String descripcion, Object objeto) {
+        writeLog("INFO", descripcion, objeto, null);
+    }
+
+    /**
+     * Log de nivel INFO solo con mensaje.
+     * Ejemplo: LogWriterLib.info("Inicio del proceso de validación");
+     */
+    public static void info(String descripcion) {
+        writeLog("INFO", descripcion, null, null);
+    }
+
+    /**
+     * Log de nivel DEBUG con descripción y objeto.
+     * Ejemplo: LogWriterLib.debug("Request body recibido", requestBody);
+     */
+    public static void debug(String descripcion, Object objeto) {
+        writeLog("DEBUG", descripcion, objeto, null);
+    }
+
+    /**
+     * Log de nivel DEBUG solo con mensaje.
+     */
+    public static void debug(String descripcion) {
+        writeLog("DEBUG", descripcion, null, null);
+    }
+
+    /**
+     * Log de nivel WARN con descripción y objeto.
+     * Ejemplo: LogWriterLib.warn("Cuenta sin fondos suficientes", cuentaDTO);
+     */
+    public static void warn(String descripcion, Object objeto) {
+        writeLog("WARN", descripcion, objeto, null);
+    }
+
+    /**
+     * Log de nivel WARN solo con mensaje.
+     */
+    public static void warn(String descripcion) {
+        writeLog("WARN", descripcion, null, null);
+    }
+
+    /**
+     * Log de nivel ERROR con descripción, objeto y excepción.
+     * Ejemplo: LogWriterLib.error("Error al transferir", transferDTO, ex);
+     */
+    public static void error(String descripcion, Object objeto, Throwable throwable) {
+        writeLog("ERROR", descripcion, objeto, throwable);
+    }
+
+    /**
+     * Log de nivel ERROR con descripción y excepción.
+     * Ejemplo: LogWriterLib.error("Fallo en consulta", ex);
+     */
+    public static void error(String descripcion, Throwable throwable) {
+        writeLog("ERROR", descripcion, null, throwable);
+    }
+
+    /**
+     * Log de nivel ERROR solo con mensaje.
+     */
+    public static void error(String descripcion) {
+        writeLog("ERROR", descripcion, null, null);
+    }
+
+    // =========================================================================
+    // LOG DE REQUEST/RESPONSE (usado por el filtro e interceptor)
+    // =========================================================================
+
+    /**
+     * Registra la entrada de una petición HTTP.
+     */
+    public static void logRequestEntry(String method, String uri, String queryString,
+                                        String headers, String body, String requestId) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("========== REQUEST ENTRADA ==========\n");
+        sb.append("Request-ID : ").append(requestId).append("\n");
+        sb.append("Timestamp  : ").append(LocalDateTime.now()).append("\n");
+        sb.append("Método     : ").append(method).append("\n");
+        sb.append("URI        : ").append(uri).append("\n");
+        if (queryString != null && !queryString.isEmpty()) {
+            sb.append("Query      : ").append(queryString).append("\n");
+        }
+        sb.append("--- Headers ---\n").append(headers).append("\n");
+        if (body != null && !body.isEmpty()) {
+            sb.append("--- Body ---\n").append(formatJsonSafe(body)).append("\n");
+        }
+        sb.append("=====================================\n");
+
+        writeRawLog("INFO", sb.toString());
+    }
+
+    /**
+     * Registra la salida/respuesta de una petición HTTP.
+     */
+    public static void logRequestExit(String method, String uri, int statusCode,
+                                       String responseBody, long durationMs, String requestId) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("========== RESPONSE SALIDA ==========\n");
+        sb.append("Request-ID : ").append(requestId).append("\n");
+        sb.append("Timestamp  : ").append(LocalDateTime.now()).append("\n");
+        sb.append("Método     : ").append(method).append("\n");
+        sb.append("URI        : ").append(uri).append("\n");
+        sb.append("Status     : ").append(statusCode).append("\n");
+        sb.append("Duración   : ").append(durationMs).append(" ms\n");
+        if (responseBody != null && !responseBody.isEmpty()) {
+            sb.append("--- Response Body ---\n").append(formatJsonSafe(responseBody)).append("\n");
+        }
+        sb.append("=====================================\n");
+
+        writeRawLog("INFO", sb.toString());
+    }
+
+    // =========================================================================
+    // ESCRITURA EN ARCHIVO
+    // =========================================================================
+
+    private static void writeLog(String level, String descripcion, Object objeto, Throwable throwable) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[").append(level).append("] ");
+        sb.append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")));
+
+        String reqId = currentRequestId.get();
+        if (reqId != null) {
+            sb.append(" [").append(reqId).append("]");
+        }
+
+        sb.append(" - ").append(descripcion);
+
+        if (objeto != null) {
+            sb.append("\n  └─ Dato: ").append(objectToString(objeto));
+        }
+
+        if (throwable != null) {
+            sb.append("\n  └─ Excepción: ").append(throwable.getClass().getName())
+              .append(": ").append(throwable.getMessage());
+            // Incluir primeras 5 líneas del stacktrace
+            StackTraceElement[] stack = throwable.getStackTrace();
+            int limit = Math.min(stack.length, 5);
+            for (int i = 0; i < limit; i++) {
+                sb.append("\n      at ").append(stack[i].toString());
+            }
+            if (stack.length > 5) {
+                sb.append("\n      ... ").append(stack.length - 5).append(" más");
+            }
+        }
+
+        writeRawLog(level, sb.toString());
+    }
+
+    private static void writeRawLog(String level, String content) {
+        // Log a consola también
+        switch (level) {
+            case "ERROR": logger.error(content); break;
+            case "WARN":  logger.warn(content);  break;
+            case "DEBUG": logger.debug(content);  break;
+            default:      logger.info(content);   break;
+        }
+
+        // Escribir a archivo
+        try {
+            String filePath = buildFilePath();
+            File file = new File(filePath);
+            file.getParentFile().mkdirs();
+
+            try (PrintWriter writer = new PrintWriter(new FileWriter(file, true))) {
+                writer.println(content);
+                writer.flush();
+            }
+        } catch (IOException e) {
+            logger.error("Error escribiendo log a archivo: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Construye la ruta del archivo de log:
+     * basePath/NombreProyecto/Endpoint/yyyy-MM-dd/HH.log
+     * 
+     * Cada hora se crea un nuevo archivo.
+     */
+    private static String buildFilePath() {
+        LocalDateTime now = LocalDateTime.now();
+        String endpoint = currentEndpoint.get();
+        if (endpoint == null || endpoint.isEmpty()) {
+            endpoint = "general";
+        }
+        // Limpiar el endpoint para usarlo como nombre de carpeta
+        endpoint = sanitizePath(endpoint);
+
+        String datePart = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String hourPart = now.format(DateTimeFormatter.ofPattern("HH")) + "h";
+
+        // Estructura: C:/logs/MiProyecto/transferencias/2026-04-05/14h.log
+        return String.join(File.separator,
+                basePath, projectName, endpoint, datePart, hourPart + ".log");
+    }
+
+    private static String sanitizePath(String path) {
+        // Remover / inicial y reemplazar / por _
+        if (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        return path.replaceAll("[/\\\\:*?\"<>|]", "_")
+                    .replaceAll("_+", "_");
+    }
+
+    private static String objectToString(Object obj) {
+        if (obj == null) return "null";
+        if (obj instanceof String) return (String) obj;
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (Exception e) {
+            return obj.toString();
+        }
+    }
+
+    private static String formatJsonSafe(String json) {
+        if (json == null || json.isEmpty()) return json;
+        try {
+            Object parsed = objectMapper.readValue(json, Object.class);
+            return objectMapper.writeValueAsString(parsed);
+        } catch (Exception e) {
+            return json; // Devolver tal cual si no es JSON válido
+        }
+    }
+}
