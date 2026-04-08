@@ -1,30 +1,74 @@
-sw.Restart();
-_logger.LogInformation("--> StartConsult CYBIPRP");
-
-const string sql = @"
-    SELECT *
-    FROM CYBERDTA.CYBIPRP
-    WHERE ESTADO_IMPUESTO = @estado";
-
-var response = await database.Connection.QueryAsync(
-    sql,
-    new { estado = estadoImpuesto.Value });
-
-sw.Stop();
-_logger.LogInformation("--> EndConsult CYBIPRP {Elapsed}ms", sw.Elapsed.TotalMilliseconds);
-
-var registros = response.ToList();
-
-if (!registros.Any())
+// Campos que actúan como "código" (se guardan para concatenar después)
+private static readonly HashSet<string> CamposCodigo = new()
 {
-    return listaCabecera;
-}
+    "IRP00COD",
+    "ICO00COD"
+};
 
-// Acceder a campos dinámicamente
-foreach (var row in registros)
+// Campos que actúan como "descripción" (se concatenan con el código previo)
+private static readonly HashSet<string> CamposDescripcion = new()
 {
-    string codigo = row.CODIGO;        // nombre exacto de la columna en DB2
-    decimal monto = row.MONTO;
-    DateTime fecha = row.FECHA_CREACION;
-    // ...
+    "IRP01DES",
+    "ICO01DES"
+};
+
+public Data CrearListaSalida(
+    IEnumerable<dynamic> response,
+    Dictionary<string, string> diccionario,
+    string encabezado,
+    string subEncabezado)
+{
+    var lista = new Data
+    {
+        HasData = true,
+        Field = encabezado,
+        DataList = new List<Data>()
+    };
+
+    int i = 0;
+    foreach (var item in response)
+    {
+        i++;
+        var fila = (IDictionary<string, object>)item;
+
+        var subLista = new Data
+        {
+            HasData = true,
+            Field = subEncabezado,
+            Id = i.ToString(),
+            DataList = new List<Data>()
+        };
+
+        string codigoServicio = "";
+
+        foreach (var columna in fila)
+        {
+            // Solo procesamos las columnas que están en el diccionario
+            if (!diccionario.TryGetValue(columna.Key, out var labelAmigable))
+                continue;
+
+            string valor = columna.Value?.ToString() ?? "";
+
+            // Caso especial: es un campo "código" → guardarlo para el siguiente
+            if (CamposCodigo.Contains(columna.Key))
+            {
+                codigoServicio = valor;
+            }
+            // Caso especial: es un campo "descripción" → concatenar con el código
+            else if (CamposDescripcion.Contains(columna.Key))
+            {
+                valor = $"{codigoServicio} - {valor}";
+            }
+
+            subLista.DataList.Add(new Data
+            {
+                Field = labelAmigable,
+                Value = valor
+            });
+        }
+
+        lista.DataList.Add(subLista);
+    }
+
+    return lista;
 }
