@@ -1,37 +1,30 @@
-public async Task<Data> ConsultaCabecera(EasyParameter estadoImpuesto, int anio /*, ...*/)
+sw.Restart();
+_logger.LogInformation("--> StartConsult CYBIPRP");
+
+const string sql = @"
+    SELECT *
+    FROM CYBERDTA.CYBIPRP
+    WHERE ESTADO_IMPUESTO = @estado";
+
+var response = await database.Connection.QueryAsync(
+    sql,
+    new { estado = estadoImpuesto.Value });
+
+sw.Stop();
+_logger.LogInformation("--> EndConsult CYBIPRP {Elapsed}ms", sw.Elapsed.TotalMilliseconds);
+
+var registros = response.ToList();
+
+if (!registros.Any())
 {
-    Data listaCabecera = new Data();
-
-    // -- 1. Consultar cabecera --
-    // ANTES: ServiceQueryStringGenerator + EasyCrudModels.SelectExecute sobre CYBERDTA.CYBIPRP
-    // AHORA: QueryBuilder<CYBIPRP> + Dapper async (misma tabla)
-    var queryCabecera = new QueryBuilder<CYBIPRP>(db2Options)
-        .Select()
-        .Where(item => item.EstadoImpuesto == estadoImpuesto.Value) // ajusta al nombre real de la propiedad
-        .Build();
-
-    sw.Restart();
-    _logger.LogInformation("--> StartConsult CYBIPRP");
-    var response = await database.Connection.QueryAsync<CYBIPRP>(
-        queryCabecera.Sql,
-        queryCabecera.ToDapperParameters());
-    sw.Stop();
-    _logger.LogInformation("--> EndConsult CYBIPRP {Elapsed}ms", sw.Elapsed.TotalMilliseconds);
-
-    var registros = response.ToList();
-
-    // -- 2. Validación temprana --
-    // ANTES: if (Count==0) {} else if (Utilitarios.ValidarRegistros(...)) { ... }
-    //        ValidarRegistros revisaba _defaultError cuando Count==1.
-    // AHORA: chequeo directo sobre la lista tipada, sin helper ni GetValue.
-    if (!registros.Any())
-    {
-        return listaCabecera;
-    }
-
-    // -- 3. Armado de la respuesta --
-    listaCabecera = CrearListaSalida(registros, Diccionario(), "En...");
-    listaCabecera = Detalles(listaCabecera, anio);
-
     return listaCabecera;
+}
+
+// Acceder a campos dinámicamente
+foreach (var row in registros)
+{
+    string codigo = row.CODIGO;        // nombre exacto de la columna en DB2
+    decimal monto = row.MONTO;
+    DateTime fecha = row.FECHA_CREACION;
+    // ...
 }
